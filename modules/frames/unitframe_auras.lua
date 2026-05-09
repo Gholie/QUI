@@ -14,6 +14,7 @@ local CreateFrame = CreateFrame
 local GetTime = GetTime
 local C_Timer = C_Timer
 local math_floor = math.floor
+local pairs = pairs
 
 -- QUI_UF is created in unitframes.lua and exported to ns.QUI_UnitFrames.
 -- This file loads after unitframes.lua, so the reference is available.
@@ -45,6 +46,25 @@ local PREVIEW_AURAS = {
         {icon = "Interface\\Icons\\spell_nature_slow", stacks = 2, duration = 10},
         {icon = "Interface\\Icons\\spell_shadow_shadesofdarkness", stacks = 5, duration = 10},
     }
+}
+
+-- Maps DB toggle keys to Blizzard classification filter strings.
+-- Keep this in sync with the group frame aura classification options.
+local BUFF_CLASSIFICATION_MAP = {
+    raid              = "HELPFUL|RAID",
+    raidInCombat      = "HELPFUL|RAID_IN_COMBAT",
+    cancelable        = "HELPFUL|CANCELABLE",
+    notCancelable     = "HELPFUL|NOT_CANCELABLE",
+    important         = "HELPFUL|IMPORTANT",
+    bigDefensive      = "HELPFUL|BIG_DEFENSIVE",
+    externalDefensive = "HELPFUL|EXTERNAL_DEFENSIVE",
+}
+
+local DEBUFF_CLASSIFICATION_MAP = {
+    raid         = "HARMFUL|RAID",
+    raidInCombat = "HARMFUL|RAID_IN_COMBAT",
+    crowdControl = "HARMFUL|CROWD_CONTROL",
+    important    = "HARMFUL|IMPORTANT",
 }
 
 ---------------------------------------------------------------------------
@@ -244,6 +264,57 @@ local function GetAuraIcon(container, index, parent, size, auraSettings, isDebuf
     return icon
 end
 
+local function BuildClassificationFilters(classifications, classificationMap)
+    if not classifications or not classificationMap then return nil end
+
+    local filters
+    for key, filterString in pairs(classificationMap) do
+        if classifications[key] then
+            filters = filters or {}
+            filters[#filters + 1] = filterString
+        end
+    end
+
+    return filters
+end
+
+local function IsAuraFilteredOutByInstanceID(unit, auraInstanceID, filterString)
+    if not C_UnitAuras or not C_UnitAuras.IsAuraFilteredOutByInstanceID then
+        return nil
+    end
+    if not unit or not auraInstanceID or not filterString then
+        return nil
+    end
+    if Helpers.IsSecretValue(auraInstanceID) then
+        return nil
+    end
+
+    local ok, filteredOut = pcall(C_UnitAuras.IsAuraFilteredOutByInstanceID, unit, auraInstanceID, filterString)
+    if not ok or Helpers.IsSecretValue(filteredOut) then
+        return nil
+    end
+
+    return filteredOut
+end
+
+local function AuraPassesAnyFilter(unit, auraInstanceID, filters)
+    if not filters or #filters == 0 then
+        return true
+    end
+
+    for _, filterString in ipairs(filters) do
+        local filteredOut = IsAuraFilteredOutByInstanceID(unit, auraInstanceID, filterString)
+        if filteredOut == nil then
+            return true
+        end
+        if filteredOut == false then
+            return true
+        end
+    end
+
+    return false
+end
+
 ---------------------------------------------------------------------------
 -- AURA UPDATE
 ---------------------------------------------------------------------------
@@ -313,6 +384,16 @@ local function UpdateAuras(frame)
     local buffOffsetY = auraSettings.buffOffsetY or -2
     local buffSpacing = auraSettings.buffSpacing or auraSettings.iconSpacing or 2
 
+    local usePlayerTargetAuraFilters = unitKey == "player" or unitKey == "target"
+    local debuffClassificationFilters
+    if usePlayerTargetAuraFilters and auraSettings.debuffFilterMode == "classification" then
+        debuffClassificationFilters = BuildClassificationFilters(auraSettings.debuffClassifications, DEBUFF_CLASSIFICATION_MAP)
+    end
+    local buffClassificationFilters
+    if usePlayerTargetAuraFilters and auraSettings.buffFilterMode == "classification" then
+        buffClassificationFilters = BuildClassificationFilters(auraSettings.buffClassifications, BUFF_CLASSIFICATION_MAP)
+    end
+
     -- Initialize containers
     frame.buffIcons = frame.buffIcons or {}
     frame.debuffIcons = frame.debuffIcons or {}
@@ -376,8 +457,10 @@ local function UpdateAuras(frame)
             local auraData = C_UnitAuras.GetAuraDataByIndex(unit, debuffIndex, "HARMFUL")
             if not auraData then break end
             debuffIndex = debuffIndex + 1
-            if filterDebuffsByMine and C_UnitAuras.IsAuraFilteredOutByInstanceID(unit, auraData.auraInstanceID, "HARMFUL|PLAYER") then
+            if filterDebuffsByMine and IsAuraFilteredOutByInstanceID(unit, auraData.auraInstanceID, "HARMFUL|PLAYER") then
                 -- skip: foreign-source debuff while onlyMyDebuffs is on
+            elseif debuffClassificationFilters and not AuraPassesAnyFilter(unit, auraData.auraInstanceID, debuffClassificationFilters) then
+                -- skip: debuff does not match selected Blizzard classifications
             else
 
             debuffCount = debuffCount + 1
@@ -461,12 +544,12 @@ local function UpdateAuras(frame)
 
     -- Populate buffs (skip if preview is active).
     -- Boss frames show all buffs so encounter-critical self-buffs (e.g.
-    -- drake stacks in Voidspire) remain visible; other frames filter to
-    -- player/vehicle-cast buffs to keep class-mate buffs out of the
-    -- player/target/focus/targettarget rows. Filter is delegated to
-    -- Blizzard's |PLAYER filter via IsAuraFilteredOutByInstanceID for
-    -- taint-safe ownership detection on secret source fields.
-    local filterBuffsByMine = not unit:match("^boss%d+$")
+    -- drake stacks in Voidspire) remain visible. Other frames keep the
+    -- historical player/vehicle-cast default, now exposed for player/target.
+    local filterBuffsByMine = false
+    if not unit:match("^boss%d+$") then
+        filterBuffsByMine = auraSettings.buffFilterOnlyMine ~= false
+    end
     local buffCount = 0
     local buffIndex = 1
     if showBuffs and not buffPreviewActive then
@@ -474,8 +557,10 @@ local function UpdateAuras(frame)
             local auraData = C_UnitAuras.GetAuraDataByIndex(unit, buffIndex, "HELPFUL")
             if not auraData then break end
             buffIndex = buffIndex + 1
-            if filterBuffsByMine and C_UnitAuras.IsAuraFilteredOutByInstanceID(unit, auraData.auraInstanceID, "HELPFUL|PLAYER") then
+            if filterBuffsByMine and IsAuraFilteredOutByInstanceID(unit, auraData.auraInstanceID, "HELPFUL|PLAYER") then
                 -- skip: foreign-source buff while ownership filter is on
+            elseif buffClassificationFilters and not AuraPassesAnyFilter(unit, auraData.auraInstanceID, buffClassificationFilters) then
+                -- skip: buff does not match selected Blizzard classifications
             else
 
             buffCount = buffCount + 1

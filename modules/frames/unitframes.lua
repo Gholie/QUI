@@ -4632,6 +4632,20 @@ do
             {value = "UP", text = "Up"},
             {value = "DOWN", text = "Down"},
         }
+        local filterModeOptions = {
+            {value = "off", text = "Off (Show All)"},
+            {value = "classification", text = "Classification"},
+        }
+        local function SetClassificationRowsEnabled(rows, enabled)
+            if not rows then return end
+            for _, row in ipairs(rows) do
+                if row.SetEnabled then
+                    row:SetEnabled(enabled)
+                else
+                    row:SetAlpha(enabled and 1 or 0.4)
+                end
+            end
+        end
 
         local function GetTextureList()
             return U.GetTextureList()
@@ -4883,13 +4897,59 @@ do
             -- Auras - Debuffs
             if unitDB.auras == nil then unitDB.auras = {} end
             local auras = unitDB.auras
+            local isPlayerTargetAuraFilterUnit = unitKey == "player" or unitKey == "target"
+            if isPlayerTargetAuraFilterUnit then
+                if auras.buffFilterMode == nil then auras.buffFilterMode = "off" end
+                if auras.debuffFilterMode == nil then auras.debuffFilterMode = "off" end
+                if auras.buffFilterOnlyMine == nil then auras.buffFilterOnlyMine = true end
+                if auras.buffClassifications == nil then auras.buffClassifications = {} end
+                if auras.debuffClassifications == nil then auras.debuffClassifications = {} end
+                Helpers.EnsureDefaults(auras.buffClassifications, {
+                    raid = false,
+                    raidInCombat = false,
+                    cancelable = false,
+                    notCancelable = false,
+                    important = false,
+                    bigDefensive = false,
+                    externalDefensive = false,
+                })
+                Helpers.EnsureDefaults(auras.debuffClassifications, {
+                    raid = false,
+                    raidInCombat = false,
+                    crowdControl = false,
+                    important = false,
+                })
+            end
 
-            CreateCollapsible(content, "Debuff Icons", 9 * FORM_ROW + 8, function(body)
+            local debuffRows = 8
+            if unitKey ~= "player" then debuffRows = debuffRows + 1 end
+            if isPlayerTargetAuraFilterUnit then debuffRows = debuffRows + 5 end
+            CreateCollapsible(content, "Debuff Icons", debuffRows * FORM_ROW + 8, function(body)
                 local sy = -4
                 sy = P(GUI:CreateFormCheckbox(body, "Show Debuffs", "showDebuffs", auras, RefreshUF), body, sy)
                 sy = P(GUI:CreateFormCheckbox(body, "Hide Duration Swipe", "debuffHideSwipe", auras, RefreshUF), body, sy)
                 if unitKey ~= "player" then
                     sy = P(GUI:CreateFormCheckbox(body, "Only My Debuffs", "onlyMyDebuffs", auras, RefreshUF), body, sy)
+                end
+                if isPlayerTargetAuraFilterUnit then
+                    local debuffClassRows = {}
+                    local function UpdateDebuffClassRows()
+                        SetClassificationRowsEnabled(debuffClassRows, auras.debuffFilterMode == "classification")
+                    end
+                    sy = P(GUI:CreateFormDropdown(body, "Debuff Filter Mode", filterModeOptions, "debuffFilterMode", auras, function()
+                        UpdateDebuffClassRows()
+                        RefreshUF()
+                    end), body, sy)
+                    local debuffClass = auras.debuffClassifications
+                    local row = GUI:CreateFormCheckbox(body, "Raid", "raid", debuffClass, RefreshUF)
+                    debuffClassRows[#debuffClassRows + 1] = row; sy = P(row, body, sy)
+                    row = GUI:CreateFormCheckbox(body, "Raid (In Combat)", "raidInCombat", debuffClass, RefreshUF)
+                    debuffClassRows[#debuffClassRows + 1] = row; sy = P(row, body, sy)
+                    row = GUI:CreateFormCheckbox(body, "Crowd Control", "crowdControl", debuffClass, RefreshUF)
+                    debuffClassRows[#debuffClassRows + 1] = row; sy = P(row, body, sy)
+                    row = GUI:CreateFormCheckbox(body, "Important", "important", debuffClass, RefreshUF)
+                    debuffClassRows[#debuffClassRows + 1] = row; sy = P(row, body, sy)
+                    UpdateDebuffClassRows()
                 end
                 sy = P(GUI:CreateFormSlider(body, "Icon Size", 12, 50, 1, "iconSize", auras, RefreshUF, DEFER), body, sy)
                 sy = P(GUI:CreateFormDropdown(body, "Anchor", cornerOptions, "debuffAnchor", auras, RefreshUF), body, sy)
@@ -4900,10 +4960,39 @@ do
             end, sections, relayout)
 
             -- Auras - Buffs
-            CreateCollapsible(content, "Buff Icons", 8 * FORM_ROW + 8, function(body)
+            local buffRows = 8
+            if isPlayerTargetAuraFilterUnit then buffRows = buffRows + 9 end
+            CreateCollapsible(content, "Buff Icons", buffRows * FORM_ROW + 8, function(body)
                 local sy = -4
                 sy = P(GUI:CreateFormCheckbox(body, "Show Buffs", "showBuffs", auras, RefreshUF), body, sy)
                 sy = P(GUI:CreateFormCheckbox(body, "Hide Duration Swipe", "buffHideSwipe", auras, RefreshUF), body, sy)
+                if isPlayerTargetAuraFilterUnit then
+                    local buffClassRows = {}
+                    local function UpdateBuffClassRows()
+                        SetClassificationRowsEnabled(buffClassRows, auras.buffFilterMode == "classification")
+                    end
+                    sy = P(GUI:CreateFormDropdown(body, "Buff Filter Mode", filterModeOptions, "buffFilterMode", auras, function()
+                        UpdateBuffClassRows()
+                        RefreshUF()
+                    end), body, sy)
+                    sy = P(GUI:CreateFormCheckbox(body, "Only My Buffs", "buffFilterOnlyMine", auras, RefreshUF), body, sy)
+                    local buffClass = auras.buffClassifications
+                    local row = GUI:CreateFormCheckbox(body, "Raid", "raid", buffClass, RefreshUF)
+                    buffClassRows[#buffClassRows + 1] = row; sy = P(row, body, sy)
+                    row = GUI:CreateFormCheckbox(body, "Raid (In Combat)", "raidInCombat", buffClass, RefreshUF)
+                    buffClassRows[#buffClassRows + 1] = row; sy = P(row, body, sy)
+                    row = GUI:CreateFormCheckbox(body, "Cancelable", "cancelable", buffClass, RefreshUF)
+                    buffClassRows[#buffClassRows + 1] = row; sy = P(row, body, sy)
+                    row = GUI:CreateFormCheckbox(body, "Not Cancelable", "notCancelable", buffClass, RefreshUF)
+                    buffClassRows[#buffClassRows + 1] = row; sy = P(row, body, sy)
+                    row = GUI:CreateFormCheckbox(body, "Important", "important", buffClass, RefreshUF)
+                    buffClassRows[#buffClassRows + 1] = row; sy = P(row, body, sy)
+                    row = GUI:CreateFormCheckbox(body, "Big Defensive", "bigDefensive", buffClass, RefreshUF)
+                    buffClassRows[#buffClassRows + 1] = row; sy = P(row, body, sy)
+                    row = GUI:CreateFormCheckbox(body, "External Defensive", "externalDefensive", buffClass, RefreshUF)
+                    buffClassRows[#buffClassRows + 1] = row; sy = P(row, body, sy)
+                    UpdateBuffClassRows()
+                end
                 sy = P(GUI:CreateFormSlider(body, "Icon Size", 12, 50, 1, "buffIconSize", auras, RefreshUF, DEFER), body, sy)
                 sy = P(GUI:CreateFormDropdown(body, "Anchor", cornerOptions, "buffAnchor", auras, RefreshUF), body, sy)
                 sy = P(GUI:CreateFormDropdown(body, "Grow Direction", growOptions, "buffGrow", auras, RefreshUF), body, sy)
