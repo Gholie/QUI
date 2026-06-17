@@ -7,8 +7,6 @@
 
 QUI is a modular World of Warcraft UI suite for Midnight 12.0+. It combines combat HUD tools, layout editing, action bars, unit and group frames, chat, minimap controls, data panels, a native damage meter, profile tools, and quality-of-life helpers under one settings experience.
 
-Current beta: **v4.0.0-beta43**.
-
 ## What is New in QUI 4
 
 - **Modular addon suite:** QUI now ships as a core addon plus feature folders such as `QUI_ActionBars`, `QUI_CDM`, `QUI_Chat`, `QUI_Bags`, `QUI_InfoBar`, `QUI_Alts`, and `QUI_Options`.
