@@ -392,25 +392,26 @@ function RemoveEditBoxStyle(chatFrame)
     end
     if not editBox then return end
 
-    -- Stock restore: the live disable flip must hand back a fully stock
-    -- editbox (no /reload). Inverse of StyleEditBox's strip + reanchor.
-    -- Anchors per FloatingChatFrame.xml's ChatFrameEditBoxTemplate use:
-    -- TOPLEFT -> chatFrame BOTTOMLEFT (-5,-2), RIGHT -> ScrollBar RIGHT (8,0).
-    if editBox.ClearAllPoints and editBox.SetPoint then
-        editBox:ClearAllPoints()
-        editBox:SetPoint("TOPLEFT", chatFrame, "BOTTOMLEFT", -5, -2)
-        local scrollBar = chatFrame.ScrollBar
-        if scrollBar then
-            editBox:SetPoint("RIGHT", scrollBar, "RIGHT", 8, 0)
-        else
-            editBox:SetPoint("RIGHT", chatFrame, "RIGHT", 8, 0)
-        end
-    end
-
     -- Un-strip the Blizzard chrome StyleEditBox hid/alpha'd, and clear the
     -- styled latch so a re-enable re-strips.
     local ebState = I.editBoxState[editBox]
     if ebState and ebState.styled then
+        -- Stock restore: the live disable flip must hand back a fully stock
+        -- editbox (no /reload). Inverse of StyleEditBox's strip + reanchor.
+        -- Anchors per FloatingChatFrame.xml's ChatFrameEditBoxTemplate use:
+        -- TOPLEFT -> chatFrame BOTTOMLEFT (-5,-2), RIGHT -> ScrollBar RIGHT (8,0).
+        -- Only runs when QUI actually styled the editbox — otherwise another
+        -- addon's anchoring would be clobbered on every disabled Apply().
+        if editBox.ClearAllPoints and editBox.SetPoint then
+            editBox:ClearAllPoints()
+            editBox:SetPoint("TOPLEFT", chatFrame, "BOTTOMLEFT", -5, -2)
+            local scrollBar = chatFrame.ScrollBar
+            if scrollBar then
+                editBox:SetPoint("RIGHT", scrollBar, "RIGHT", 8, 0)
+            else
+                editBox:SetPoint("RIGHT", chatFrame, "RIGHT", 8, 0)
+            end
+        end
         ebState.styled = false
         -- Hand the QUI chat font back to the stock chat font, on the input AND
         -- each channel-prefix child. RestoreStockEditBoxFont uses SetFont (never
